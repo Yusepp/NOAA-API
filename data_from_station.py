@@ -24,6 +24,7 @@ def main(args):
     yrs = range(sd.year, ed.year+1)
     lines = [",".join(['NAME', 'HR_TIME'] + args.flds)]
     url_fmt = 'ftp://ftp.ncdc.noaa.gov/pub/data/noaa/{0}/{1}-{0}.gz'
+    
     for yr in yrs:
         url = url_fmt.format(yr, args.stn_id)
         p1 = Popen(["curl", url], stdout=PIPE)

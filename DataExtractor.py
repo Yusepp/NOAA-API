@@ -1,12 +1,12 @@
 # Import request functions
 from data_from_station import *
-from explore_stations import stns_near_lat_lon
+from explore_stations import stns_with_fld
 from noaahist import *
 # Python standard libraries
 import subprocess
 import ujson
 import os
-
+import sys
 
 
 
@@ -27,6 +27,8 @@ def get_data(d,z,lat,lon,f,o):
                                   written to outfilename_metadata.txt, else printed to STDOUT
     """
     
+    os.mkdir("./fix")
+    
     retrieve_data(d,z,lat,lon,f,o)
         
     
@@ -36,20 +38,38 @@ def get_data(d,z,lat,lon,f,o):
     if len(columns) > 0: # If we found sparsity we need to fix it.
         # To do so we first check for the closest station to our zipcode
         # In order to retrieve the missing data (or try it)
-        year1 = int(d[:4])
+        lat = lat.split(" ")[0] # First Lat
+        lon = lon.split(" ")[0] # First Lon
+        year1 = int(d[:4]) # First Year
+        
         if len(d) > 8:
-            year2 = int(d[9:13])
-            station1 = stns_near_lat_lon(lat,lon,year=year1,N=1)
-            station2 = stns_near_lat_lon(lat,lon,year=year2,N=1)
-            print station1
-            print station2
+            year2 = int(d[9:13]) # Second Year
+            station1 = stns_with_fld(columns[0], latitude=lat, longitude=lon, year=year1, N=5)
+        
         else:
-            station1 = stns_near_lat_lon(lat,lon,year=year1,N=1)
-            print station1
-        
-        #get_data_from_station("Q1",i,f,s,e)
+            station1 = stns_with_fld(columns, latitude=lat, longitude=lon, year=year1, N=5) # Station1
         
         
+        def retrieve_station(station):
+                try:
+                    station_data = get_data_from_station("Q1",station,columns[0],d[:8],d[9:17])
+                    return station_data,station
+                except: 
+                    return None
+            
+        all_stations_data = [retrieve_station(station) for station in station1] 
+            
+        for data,station in all_stations_data:
+            if data != None:
+                
+                if not os.path.isdir("./fix/"+str(year1)): 
+                    os.mkdir("./fix/"+str(year1))
+                    
+                path  = "./fix/"+str(year1)+"/"+str(station)+".csv"
+                f = open(path, "w")
+                f.write(data)
+                f.close()
+                print "Created: "+path
         
     
     
@@ -121,6 +141,8 @@ def get_data_from_station(n,i,f,s,e):
     print " Done\n"   
     return output
 
-
-get_data(d="19900321 19900323",z="89109",lat="34.05 34.893",lon="-118.25 -117.019",
-         f="TEMP DIR MAX MIN PCP01",o="tmp.csv")
+fields = " ".join(sys.argv[6:len(sys.argv)-1])
+get_data(d=sys.argv[1]+" "+sys.argv[2],z=sys.argv[3],lat=sys.argv[4],lon=sys.argv[5],
+         f=fields,o=sys.argv[-1])
+#get_data(d="19900321" "19900323",z="89109",lat="34.05 34.893",lon="-118.25 -117.019",
+#         f="TEMP DIR MAX MIN PCP01",o="tmp.csv")

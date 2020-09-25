@@ -36,11 +36,16 @@ def stns_near_lat_lon(latitude, longitude, year, N=20, id_filter=None):
     if id_filter:
         stn_ids = id_filter(stn_ids)
     _ids = sorted(stn_ids, key=lambda _id: haversine(latitude, longitude, stns[_id]['lat'], stns[_id]['lon']))[:N]
-    lines += [show_stn(_id, j) for j, _id in enumerate(_ids)]
-    if len(lines) > 1:
-        print "".join(lines)
+    
+    if len(_ids) > 0:
+        return _ids
     else:
-        print "No stations were found that matched these criteria."
+        return None
+    #lines += [show_stn(_id, j) for j, _id in enumerate(_ids)]
+    #if len(lines) > 1:
+    #    return "".join(lines)
+    #else:
+    #   print "No stations were found that matched these criteria."
 
 def stns_near_zip(zip, year, N=20, id_filter=None):
     try:
@@ -55,7 +60,7 @@ def stns_with_fld(fld, latitude, longitude, year, N=20):
     assert fld in valid_flds, "the fld argument is not among the valid fields: %s" % ", ".join(valid_flds)
     def filter_ids(stn_ids):
         return [x for x in stn_ids if fld in stns[x]['flds']]
-    stns_near_lat_lon(latitude, longitude, year, N, filter_ids)
+    return stns_near_lat_lon(latitude, longitude, year, N, filter_ids)
     
 def stns_with_fld_zip(fld, zip, year, N=20):
     try:
@@ -63,11 +68,3 @@ def stns_with_fld_zip(fld, zip, year, N=20):
         stns_with_fld(fld, lat, lon, year, N)
     except ImportError:
         print "pyzipcode is not available -> try using stns_near_lat_lon()"
-
-if __name__ == "__main__":
-    print "This module is for interactive exploration."
-    print "Find weather stations near a location, optionally requesting that a certain field is likely to be present."
-    print "There are no guarantees that the data for any field will exist.  Data observations are sparse in many cases."
-    print """Example:
- >>> from explore_stations import *
- >>> stns_with_fld("TEMP", 38.9, -77.0, 2013)"""
