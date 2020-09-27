@@ -44,15 +44,15 @@ def get_data(d,z,lat,lon,f,o):
         
         if len(d) > 8:
             year2 = int(d[9:13]) # Second Year
-            station1 = stns_with_fld(columns[0], latitude=lat, longitude=lon, year=year1, N=5)
+            station1 = stns_with_fld(columns[0], latitude=lat, longitude=lon, year=year1, N=10)
         
         else:
-            station1 = stns_with_fld(columns, latitude=lat, longitude=lon, year=year1, N=5) # Station1
+            station1 = stns_with_fld(columns, latitude=lat, longitude=lon, year=year1, N=10) # Station1
         
         
         def retrieve_station(station):
                 try:
-                    station_data = get_data_from_station("Q1",station,columns[0],d[:8],d[9:17])
+                    station_data = get_data_from_station("Q1",station," ".join(columns),d[:8],d[9:17])
                     return station_data,station
                 except: 
                     return None
@@ -65,11 +65,19 @@ def get_data(d,z,lat,lon,f,o):
                 if not os.path.isdir("./fix/"+str(year1)): 
                     os.mkdir("./fix/"+str(year1))
                     
-                path  = "./fix/"+str(year1)+"/"+str(station)+".csv"
-                f = open(path, "w")
-                f.write(data)
-                f.close()
-                print "Created: "+path
+                if 'Q1' in data:
+                    path  = "./fix/"+str(year1)+"/"+str(station)+".csv"
+                    f = open(path, "w")
+                    f.write(data)
+                    f.close()
+                    print "Created: "+path
+                    
+        print "\nCreating dataset.csv..."
+        command = "python3 createDataset.py"
+        p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
+        (output, err) = p.communicate()
+        print " Done\n"
+        
         
     
     
