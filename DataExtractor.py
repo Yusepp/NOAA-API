@@ -73,8 +73,7 @@ def get_data(d,z,lat,lon,f,o):
         possible_triangulated = list(combinations(close_stations,3))
         is_triangulated, stns_triang = check_triag({"lat":float(lat),"lon":float(lon)},stns_coord,possible_triangulated)
         
-        print "Triangulated stations: "
-        print stns_triang
+        print "Is triangulated: " + str(is_triangulated)
         
         
         def retrieve_station(station,d):
@@ -103,17 +102,22 @@ def get_data(d,z,lat,lon,f,o):
                     f.close()
                     print "Created: "+path
                     
-        print "\nCreating dataset.csv..."
-        command = "python3 createDataset.py"
+        #print "\nCreating dataset.csv..."
+        #command = "python3 createDataset.py"
+        #p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
+        #(output, err) = p.communicate()
+        #print " Done\n"
+        
+        print "Interpolating Data..."
+        command = "python3 InterpolateData.py ./fix/"+str(year)
         p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
         (output, err) = p.communicate()
         print " Done\n"
         
-
-
+        
 def sign(p1,p2,p3):
-    # Calculation
-    return (p1["lat"] - p3["lat"]) * (p2["lon"] - p3["lon"]) - (p2["lat"] - p3["lat"]) * (p1["lon"] - p3["lon"])
+        # Calculation
+        return (p1["lat"] - p3["lat"]) * (p2["lon"] - p3["lon"]) - (p2["lat"] - p3["lat"]) * (p1["lon"] - p3["lon"])
 
 
 def test_triag(current_coords,p1,p2,p3):
@@ -130,12 +134,10 @@ def test_triag(current_coords,p1,p2,p3):
 def check_triag(current_coords,stns_coord,possible_triangulated):
     
     for p1,p2,p3 in possible_triangulated:
-         if test_triag(current_coords,stns_coord[p1],stns_coord[p2],stns_coord[p3]):
-             return True, [p1,p2,p3]
+        if test_triag(current_coords,stns_coord[p1],stns_coord[p2],stns_coord[p3]):
+            return True, [p1,p2,p3]
     
-    return False, []
-    
-
+        return False, []
     
     
     
@@ -154,6 +156,7 @@ def retrieve_data(d,z,lat,lon,f,o):
     command = "python2 ./noaahist.py -d "+d+" -z "+z+" --lats "+lat+" --lons "+lon+" -f "+f+" -p --outfile "+o+" -m"
     p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
     (output, err) = p.communicate()
+    print output
     # CSV generated
     print " Generated "+o+"\n\n"
     
