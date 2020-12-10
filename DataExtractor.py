@@ -8,6 +8,8 @@ import ujson
 import os
 import sys
 from itertools import combinations
+import numpy as np
+from numpy.linalg import norm
 
 
 
@@ -48,68 +50,62 @@ def get_data(d,z,lat,lon,f,o):
         for id in all_stations:
             dist = haversine(lat1=float(lat),lon1=float(lon),lat2=float(all_stations[id]['lat']),lon2=float(all_stations[id]['lon']))/0.621371
             all_stations[id]['dist'] = dist
-            
-        # Retrieve N closest stations with fields at coords
-        close_stations_fields = [stns_with_fld(col, latitude=lat, longitude=lon, year=year, N=30) for col in columns] 
-        # First set of stations
-        close_stations = set(close_stations_fields[0])
-        # Check intersection so we get stations with all the infos
-        for close_station in close_stations_fields:
-            close_stations = close_stations.intersection(set(close_station))
-            
-        # Then we remove the ones that are too far
-        close_stations = [stn for stn in close_stations if all_stations[stn]['dist'] < 30] 
         
-        print "Close stations: "
-        print close_stations
-        
-        # We create a set with coords of the chosen stations   
-        stns_coord = {station:{"lat":float(all_stations[station]["lat"]),
-                               "lon":float(all_stations[station]["lon"])} 
-                      for station in close_stations}
-
-
         # We want to check if there are a combination of 3 stations that triangulate our current position
-        possible_triangulated = list(combinations(close_stations,3))
-        is_triangulated, stns_triang = check_triag({"lat":float(lat),"lon":float(lon)},stns_coord,possible_triangulated)
-        
+        n_search = 30
+        is_triangulated = False
+        while not is_triangulated:
+            close_stations,stns_coord = N_closest_stations_by_distance(lat,lon,year,columns,all_stations,n_search,n_search)
+            possible_triangulated = list(combinations(close_stations,3))
+            is_triangulated, stns_triang = check_triag({"lat":float(lat),"lon":float(lon)},stns_coord,possible_triangulated,all_stations)
+            n_search += 2
+            
+        # Result
         print "Is triangulated: " + str(is_triangulated)
+        print "Triangulated Stations: "+str(stns_triang)
+        print "Final rad: "+str(n_search)
         
+        # We estimate weight for every station
+        weights = barycentric_weights((float(lat),float(lon)),stns_triang,all_stations)
+        print "Estimated weights: "+str(weights)+"\n"
         
         def retrieve_station(station,d):
-            try:
-                station_data = get_data_from_station("Q1",station," ".join(columns),d[:8],d[9:17])
-                return station_data,station
-            except Exception as err: 
-                print err
-                return None
+            retrieved = False
+            
+            while not retrieved:
+                try:
+                    station_data = get_data_from_station("Q1",station," ".join(columns),d[:8],d[9:17])
+                    return station_data,station
+                except Exception as err: 
+                    print err
          
         
         
-        all_stations_data = [retrieve_station(station,d) for station in close_stations] 
-        all_stations_data = [x for x in all_stations_data if x != None]
+        triag_stations_data = [retrieve_station(station,d) for station in stns_triang] 
+        triag_stations_data = [x for x in triag_stations_data if x != None]
         
-        for data,station in all_stations_data:
+        for pos,triag_data in enumerate(triag_stations_data):
+            data,station = triag_data
             if data != None:
-                
                 if not os.path.isdir("./fix/"+str(year)): 
                     os.mkdir("./fix/"+str(year))
                     
                 if 'Q1' in data:
-                    path  = "./fix/"+str(year)+"/"+str(station)+".csv"
+                    path  = "./fix/"+str(year)+"/"+str(pos+1)+".csv"
                     f = open(path, "w")
                     f.write(data)
                     f.close()
                     print "Created: "+path
                     
-        #print "\nCreating dataset.csv..."
-        #command = "python3 createDataset.py"
-        #p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
-        #(output, err) = p.communicate()
-        #print " Done\n"
         
         print "Interpolating Data..."
         command = "python3 InterpolateData.py ./fix/"+str(year)
+        p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
+        (output, err) = p.communicate()
+        print " Done\n"
+        
+        print "Creating Dataset using Weigths..."
+        command = "python3 createDataset.py ./fix/"+str(year)+" "+weights["u"]+" "+weights["v"]+" "+weights["w"]
         p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
         (output, err) = p.communicate()
         print " Done\n"
@@ -131,15 +127,62 @@ def test_triag(current_coords,p1,p2,p3):
     return not(has_neg and has_pos)
 
 
-def check_triag(current_coords,stns_coord,possible_triangulated):
+def check_triag(current_coords,stns_coord,possible_triangulated,all_stations):
+    # Check all posible triag
+    result = [[p1,p2,p3] for p1,p2,p3 in possible_triangulated if test_triag(current_coords,stns_coord[p1],stns_coord[p2],stns_coord[p3])]
     
-    for p1,p2,p3 in possible_triangulated:
-        if test_triag(current_coords,stns_coord[p1],stns_coord[p2],stns_coord[p3]):
-            return True, [p1,p2,p3]
+    # Not Found
+    if len(result) == 0:
+        return False, result
     
-        return False, []
+    # Just one found 
+    elif len(result) == 1:
+        print "1 Found"
+        return True, result[0]
     
+    else:
+        print "Searching closest: "+str(result)
+        #  2+ We choose the closest ones
+        result = min([((all_stations[p1]['dist']+all_stations[p2]['dist']+all_stations[p3]['dist']),[p1,p2,p3]) for p1,p2,p3 in result])
+        return True, result[1]
+
+def get_pos(all_stations,stns_id):
+    return np.array((float(all_stations[stns_id]['lat']),float(all_stations[stns_id]['lon'])))
+
+def area(A,B,C):
+    return 0.5*norm(np.cross(B-A,C-A))
+
+def barycentric_weights(P,stns_triang,all_stations):
+    P = np.array(P)
+    A = get_pos(all_stations,stns_triang[0])
+    B = get_pos(all_stations,stns_triang[1])
+    C = get_pos(all_stations,stns_triang[2])
     
+    u = area(C,A,P)/area(A,B,C)
+    v = area(A,B,P)/area(A,B,C)
+    w = area(B,C,P)/area(A,B,C)
+    
+    return {"u":u,"v":v,"w":w}
+
+
+def N_closest_stations_by_distance(lat,lon,year,columns,all_stations,N,d):
+    # Retrieve N closest stations with fields at coords
+    close_stations_fields = [stns_with_fld(col, latitude=lat, longitude=lon, year=year, N=N) for col in columns] 
+    # First set of stations
+    close_stations = set(close_stations_fields[0])
+    # Check intersection so we get stations with all the infos
+    for close_station in close_stations_fields:
+        close_stations = close_stations.intersection(set(close_station))
+        
+    # Then we remove the ones that are too far
+    close_stations = [stn for stn in close_stations if all_stations[stn]['dist'] < d] 
+    
+    # We create a set with coords of the chosen stations   
+    stns_coord = {station:{"lat":float(all_stations[station]["lat"]),
+                            "lon":float(all_stations[station]["lon"])} 
+                    for station in close_stations}
+     
+    return close_stations,stns_coord 
     
 def retrieve_data(d,z,lat,lon,f,o):
     # Print Info
